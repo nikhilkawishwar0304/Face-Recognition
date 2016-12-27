@@ -14,25 +14,29 @@ from sklearn.preprocessing import LabelEncoder
 # Prints the array to 2 decimal places
 np.set_printoptions(precision=2)
 
-# Setting the variables to the paths of various directory
-
-fileDir = os.path.dirname(os.path.realpath(__file__))
-modelDir = os.path.join(fileDir, '..', 'models')
-dlibModelDir = os.path.join(modelDir, 'dlib')
-openfaceModelDir = os.path.join(modelDir, 'openface')
+# Setting the variables
 predictor_model = "shape_predictor_68_face_landmarks.dat"
 
-def get_rap():
+bgrImg = cv2.imread('Image4.jpg')
+
+# Create a HOG face detector
+detector = dlib.get_frontal_face_detector()
+
+# Create a pose predictor object
+# It takes in an image region containing some object and outputs a set of point locations that define the pose
+face_pose_predictor = dlib.shape_predictor(predictor_model)
+face_aligner = openface.AlignDlib(predictor_model)
+
+def face_detection():
 
     # Starting the timer for image pre-processing
     start = time.time()
 
     # Capturing the video from the web camera
-    #stream = cv2.VideoCapture(0)
+    # stream = cv2.VideoCapture(0)
 
     # Reading the image from the captured video
-    #ret, bgrImg = stream.read()
-    bgrImg = cv2.imread('Image4.jpg')
+    # ret, bgrImg = stream.read()
 
     # If the image isn't captured; captures exception
     if bgrImg is None:
@@ -40,27 +44,22 @@ def get_rap():
 
     # Converting the image to RGB matrix
     rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
-    
+
     print("  + Original size: {}".format(rgbImg.shape))
     print("Loading the image took {} seconds.".format(time.time() - start))
 
     # Resetting the timer for detection process
     start = time.time()
 
-    # Create a HOG face detector
-    detector = dlib.get_frontal_face_detector()
-
-    # Create a pose predictor object
-    # It takes in an image region containing some object and outputs a set of point locations that define the pose
-    face_pose_predictor = dlib.shape_predictor(predictor_model)
-
-    face_aligner = openface.AlignDlib(predictor_model)
-
     # Run the HOG face detector on the image data
     detected_faces = detector(rgbImg, 1)
 
     print("Found {} faces in the image.".format(len(detected_faces)))
+    return detected_faces,rgbImg
 
+def get_rap():
+
+    detected_faces, rgbImg = face_detection()
     # Loop through each face we found in the image
     itera = 0
     reps = []
@@ -95,6 +94,7 @@ def get_rap():
 
 def infer():
     # Open the trained classifier file and load the same
+    people = []
     with open('classifier.pkl','r') as f:
         (le,clf) = pickle.load(f)
 
@@ -114,10 +114,32 @@ def infer():
 
         print("Prediction took {} seconds.".format(time.time() - start))
         print("Predict {} @ x={} with {:.2f} confidence.".format(person, bbx,confidence))
+        people.append(person)
         if isinstance(clf, GMM):
             dist = np.linalg.norm(rep - clf.means_[maxI])
             print("  + Distance from the mean: {}".format(dist))
+    return people
 
+def display_images():
+
+    detected_faces, rgbImg = face_detection()
+    people = infer()
+    itera = 0
+    font_scale = 1.0 / len(detected_faces)
+    print font_scale
+
+    for face_rect in detected_faces:
+        # Detected faces are returned as an object with the coordinates
+        # of the top, left, right and bottom edges
+        itera = itera + 1
+
+        print("- Face #{} found at Left: {} Top: {} Right: {} Bottom: {}".format(itera, face_rect.left(), face_rect.top(),
+                                                                                 face_rect.right(), face_rect.bottom()))
+        cv2.rectangle(bgrImg,(face_rect.left(),face_rect.top()),(face_rect.right(),face_rect.bottom()),(255,0,0),2)
+        cv2.putText(bgrImg,people[itera-1],(face_rect.left(),face_rect.bottom()),cv2.FONT_HERSHEY_COMPLEX,font_scale,(0, 255, 0), 1,
+                    cv2.LINE_AA)
+    cv2.imshow("Displaying Image", bgrImg)
+    cv2.waitKey(10000)
 def train():
 
     # Loading 128 Feature set and labels (called Embeddings as Image is converted into a series of numbers)
@@ -158,4 +180,4 @@ def train():
     with open(fName, 'w') as f:
         pickle.dump((le, clf), f)
 
-infer()
+display_images()
